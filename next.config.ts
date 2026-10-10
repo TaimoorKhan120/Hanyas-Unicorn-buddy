@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   serverExternalPackages: ["@electric-sql/pglite", "pg"],
   poweredByHeader: false,
+  // Migrations are read at runtime on first DB use; include them in serverless bundles.
+  outputFileTracingIncludes: { "/**": ["./migrations/**"] },
   async headers() {
     return [
       {

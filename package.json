@@ -12,7 +12,7 @@
     "start": "next start",
     "migrate": "node --experimental-strip-types scripts/migrate.ts",
     "test": "vitest run",
-    "eval:live": "node --experimental-strip-types scripts/live-eval.ts",
+    "eval:live": "vitest run --config vitest.live.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
