@@ -1,5 +1,5 @@
 // Database access: one tiny interface over node-postgres (production) and PGlite (tests, zero-setup dev).
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 export type Row = Record<string, unknown>;
@@ -12,21 +12,25 @@ export interface Db extends Queryable {
   tx<T>(fn: (q: Queryable) => Promise<T>): Promise<T>;
 }
 
-let dbPromise: Promise<Db> | null = null;
+// One instance per process. Kept on globalThis because Next bundles route handlers and pages separately,
+// and two PGlite instances on one data directory would not see each other's writes.
+const g = globalThis as unknown as { __lumiDb?: Promise<Db> | null };
 
 export function getDb(): Promise<Db> {
-  dbPromise ??= open().then(async (db) => {
-    await migrate(db);
-    return db;
-  });
-  // Don't cache a failed open forever.
-  dbPromise.catch(() => (dbPromise = null));
-  return dbPromise;
+  if (!g.__lumiDb) {
+    const p = open().then(async (db) => {
+      await migrate(db);
+      return db;
+    });
+    p.catch(() => (g.__lumiDb = null)); // don't cache a failed open forever
+    g.__lumiDb = p;
+  }
+  return g.__lumiDb;
 }
 
 /** Tests inject their own in-memory database. */
 export function setDb(db: Db) {
-  dbPromise = Promise.resolve(db);
+  g.__lumiDb = Promise.resolve(db);
 }
 
 async function open(): Promise<Db> {
@@ -64,6 +68,7 @@ async function openPg(url: string): Promise<Db> {
 
 export async function openPglite(dataDir?: string): Promise<Db> {
   const { PGlite } = await import("@electric-sql/pglite");
+  if (dataDir) mkdirSync(dataDir, { recursive: true });
   const pg = new PGlite(dataDir);
   return {
     query: (sql, params) => pg.query(sql, params) as never,
